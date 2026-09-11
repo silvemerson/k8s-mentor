@@ -1,0 +1,37 @@
+# Cenário 1 — OOMKilled "fácil": limite de memória obviamente subdimensionado.
+#
+# `polinux/stress` é a imagem canônica pra esse tipo de demo (usada até na
+# própria documentação oficial do Kubernetes). Com --vm-bytes bem acima do
+# limit, o container é OOMKilled quase imediatamente, em CrashLoopBackOff.
+#
+# Propósito: o K8sGPT sozinho já explica isso corretamente ("aumente o
+# limite de memória") — serve de contraste pro cenário 2, mais sutil.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-resizer
+  namespace: demo
+  labels:
+    app: image-resizer
+    k8s-mentor.dev/scenario: oomkilled-facil
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-resizer
+  template:
+    metadata:
+      labels:
+        app: image-resizer
+        k8s-mentor.dev/scenario: oomkilled-facil
+    spec:
+      containers:
+        - name: image-resizer
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--vm", "1", "--vm-bytes", "150M", "--vm-hang", "1"]
+          resources:
+            requests:
+              memory: "8Mi"
+            limits:
+              memory: "16Mi" # muito abaixo do que o processo tenta alocar (150M)

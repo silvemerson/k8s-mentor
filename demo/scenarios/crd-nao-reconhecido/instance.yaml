@@ -1,0 +1,13 @@
+apiVersion: k8smentor.dev/v1
+kind: DemoWorkload
+metadata:
+  name: fraud-detector
+  namespace: demo
+  labels:
+    k8s-mentor.dev/scenario: crd-nao-reconhecido
+spec:
+  image: internal-registry.example.com/fraud-detector:v3
+  replicas: 2
+status:
+  phase: Failed
+  reason: "ImageRegistryUnreachable: internal-registry.example.com não resolve a partir do cluster"

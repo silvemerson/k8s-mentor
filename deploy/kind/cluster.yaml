@@ -1,0 +1,19 @@
+# Cluster Kind de 3 nodes (control-plane + 2 workers) usado no desenvolvimento
+# e na demo do k8s-mentor.
+#
+# Baseado no padrão de https://github.com/silvemerson/kind-infra-lab: nasce
+# dentro da rede Docker "kind" com subnet FIXA (criada por
+# scripts/setup-cluster.sh antes deste cluster) — isso é o que torna os IPs
+# do Ollama e do NFS server, ambos fora do cluster, previsíveis execução após
+# execução, em vez de sorteados pelo Docker.
+#
+# Não é aplicado direto com `kind create cluster --config` isoladamente — use
+# o script, que garante a rede fixa antes:
+#   ./scripts/setup-cluster.sh
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: k8s-mentor-demo
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

@@ -1,0 +1,126 @@
+# Valores padrão do chart k8s-mentor.
+# Todos os componentes rodam DENTRO do cluster (Kind na demo) como microserviços
+# independentes — Deployment + Service próprios, escaláveis/substituíveis
+# separadamente. Ver docs/ARCHITECTURE.md para o racional completo.
+#
+# Infra de cluster (rede Docker fixa, MetalLB, NFS provisioner, Gateway API)
+# segue o padrão de https://github.com/silvemerson/kind-infra-lab — ver
+# deploy/kind/ e scripts/setup-cluster.sh.
+
+namespace: k8s-mentor
+
+# --- Ollama: NÃO roda dentro do Kind. Roda no host via docker-compose
+# (deploy/docker-compose/), anexado à mesma rede Docker fixa "kind" que o
+# cluster usa — por isso os pods conseguem chamar o Ollama pelo IP do
+# container diretamente, sem passar pelo gateway do host. Este chart só cria
+# um Service+EndpointSlice internos apontando pra esse IP, pra que Qdrant e o
+# agente possam chamar "http://ollama:11434" normalmente de dentro do cluster.
+ollama:
+  enabled: true
+  # Ajuste conforme testes de RAM/latência na máquina de demo (ver docs/DEMO.md).
+  model: llama3.1:8b
+  external:
+    # IP do container k8s-mentor-ollama na rede Docker "kind". Obtido
+    # automaticamente por scripts/setup-cluster.sh via:
+    #   docker inspect k8s-mentor-ollama --format '{{.NetworkSettings.Networks.kind.IPAddress}}'
+    host: "" # obrigatório — sem default seguro entre máquinas diferentes
+    port: 11434
+
+# --- Qdrant: vector DB local, memória de incidentes e índice de runbooks (RAG).
+qdrant:
+  enabled: true
+  image:
+    repository: qdrant/qdrant
+    tag: latest
+  service:
+    httpPort: 6333
+    grpcPort: 6334
+  # PVC via NFS por padrão (storageClass "nfs-client", instalado por
+  # scripts/setup-cluster.sh) — sobrevive a reagendamento do pod entre os 3
+  # nodes do cluster. Trocar pra emptyDir (persistence.enabled: false) só faz
+  # sentido se você não for usar o setup completo com NFS.
+  persistence:
+    enabled: true
+    storageClassName: nfs-client
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# --- Agente k8s-mentor propriamente dito (agent/ + cmd/k8s-mentor).
+# Desabilitado por padrão: ainda não existe imagem publicada (ver Roadmap no
+# README — Fase 1). Habilite depois de buildar a imagem local:
+#   docker build -t k8s-mentor/agent:dev -f cmd/k8s-mentor/Dockerfile .
+#   kind load docker-image k8s-mentor/agent:dev --name k8s-mentor-demo
+agent:
+  enabled: false
+  image:
+    repository: k8s-mentor/agent
+    tag: dev
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  env:
+    OLLAMA_BASE_URL: http://ollama:11434
+    # Modelo separado do modelo conversacional: é leve e especializado em
+    # vetores. Baixe-o antes da demo com `ollama pull nomic-embed-text`.
+    OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+    QDRANT_BASE_URL: http://qdrant:6333
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # Expõe o agente via Gateway API (deploy/kind/gateway-api/gateway.yaml) em
+  # vez de só ClusterIP — útil pra demonstrar/chamar o agente de fora do
+  # cluster sem port-forward manual. Requer o Gateway já instalado (ver
+  # scripts/setup-cluster.sh).
+  exposeViaGateway: false
+  gatewayHostname: k8s-mentor.gateway.local
+  # RBAC de leitura (Fase 3 — correlação GitOps, agent/correlation/gitops):
+  # o agente precisa de get/list em Pods/ReplicaSets/Deployments no namespace
+  # onde os workloads observados vivem — NÃO no namespace do k8s-mentor
+  # (que só tem Qdrant/o próprio agente). Por padrão aponta pro namespace
+  # usado pelos cenários de demo (demo/scenarios/).
+  rbac:
+    enabled: true
+    watchNamespace: demo
+    # ÚNICA permissão de escrita do agente (Fase 5 — ação supervisionada):
+    # patch em Deployments do watchNamespace, usada só por `apply-action
+    # --yes` (nunca por `analyze`). Desative (false) pra um agente 100%
+    # somente-leitura, sem a Fase 5 disponível de verdade — `analyze
+    # --with-action` continua sugerindo normalmente, só `apply-action`
+    # falharia por falta de permissão.
+    allowActions: true
+  # Fase 6 — execução periódica dentro do cluster, sem intervenção manual
+  # (ver docs/DEMO.md). Desabilitado por padrão: liga junto com uma imagem
+  # já reconstruída com o k8sgpt empacotado (ver Dockerfile). O k8sgptModel
+  # precisa já estar baixado no Ollama in-cluster — mesmo modelo usado nos
+  # testes manuais desta sessão (gemma2:2b).
+  watch:
+    enabled: false
+    schedule: "*/5 * * * *" # a cada 5min — ritmo de demo; produção real usaria algo bem mais espaçado
+    k8sgptModel: gemma2:2b
+    # Notificação no Slack quando o watch encontra algo — só relata (o
+    # diagnóstico + a ação sugerida + o comando pra aprovar), nunca decide
+    # nem executa nada sozinho. A URL do Incoming Webhook é sensível, por
+    # isso vem de um Secret já existente, não de texto plano aqui:
+    #   kubectl create secret generic k8s-mentor-slack -n k8s-mentor \
+    #     --from-literal=webhook-url=https://hooks.slack.com/services/...
+    slack:
+      enabled: false
+      secretName: k8s-mentor-slack
+      secretKey: webhook-url
+      # Filtro de ruído: só notifica o Slack se recurrence >= minRecurrence,
+      # ou se houver tendência de crescimento confirmada no Prometheus, ou
+      # ação de remediação sugerida — um evento isolado sem nenhum desses
+      # sinais fica só no log/JSON do Job (kubectl logs), sem interromper o
+      # canal. Não é filtro de "falso positivo" (o k8sgpt só reporta
+      # problemas reais) — é filtro de confiança/recorrência.
+      minRecurrence: 2

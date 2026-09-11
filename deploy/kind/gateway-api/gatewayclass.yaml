@@ -1,0 +1,14 @@
+# Este GatewayClass é criado automaticamente pelo Helm chart do NGINX Gateway
+# Fabric (instalado por scripts/setup-cluster.sh). Mantido aqui só como
+# referência/documentação — NÃO faça `kubectl apply -f` neste arquivo: o
+# objeto real tem um parametersRef gerado pelo Helm que esta versão
+# simplificada sobrescreveria.
+#
+# Pra inspecionar o objeto real:
+#   kubectl get gatewayclass nginx -o yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: nginx
+spec:
+  controllerName: gateway.nginx.org/nginx-gateway-controller

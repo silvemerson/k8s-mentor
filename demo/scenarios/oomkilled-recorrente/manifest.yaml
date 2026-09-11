@@ -1,0 +1,60 @@
+# Cenário 2 — OOMKilled recorrente/sutil: limite plausível, mas o processo
+# vaza memória aos poucos (simulado) até estourar o limite, reinicia, e faz
+# tudo de novo. Diferente do cenário 1 (estoura na hora), aqui o K8sGPT só
+# vê "mais um OOMKilled" isolado — sem saber que é a 5ª vez este mês, sem
+# ver a tendência de crescimento. É exatamente onde o k8s-mentor entra.
+#
+# O "leak" é só um script Python simples (cresce ~1MB/s) — deliberadamente
+# ingênuo, o ponto é o padrão cíclico de falha, não a técnica de alocação.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: checkout-service-leak-script
+  namespace: demo
+  labels:
+    k8s-mentor.dev/scenario: oomkilled-recorrente
+data:
+  leak.py: |
+    import time
+
+    data = []
+    print("checkout-service: iniciando (memória crescendo ~1MB/s)...", flush=True)
+    while True:
+        data.append(" " * 1_000_000)
+        time.sleep(1)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout-service
+  namespace: demo
+  labels:
+    app: checkout-service
+    k8s-mentor.dev/scenario: oomkilled-recorrente
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout-service
+  template:
+    metadata:
+      labels:
+        app: checkout-service
+        k8s-mentor.dev/scenario: oomkilled-recorrente
+    spec:
+      containers:
+        - name: checkout-service
+          image: python:3.12-alpine
+          command: ["python3", "/scripts/leak.py"]
+          volumeMounts:
+            - name: leak-script
+              mountPath: /scripts
+          resources:
+            requests:
+              memory: "32Mi"
+            limits:
+              memory: "64Mi" # plausível à primeira vista — o problema é o crescimento, não o valor
+      volumes:
+        - name: leak-script
+          configMap:
+            name: checkout-service-leak-script

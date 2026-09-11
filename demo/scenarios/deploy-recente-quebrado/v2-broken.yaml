@@ -1,0 +1,42 @@
+# Versão "quebrada" — o tipo de erro humano bem comum num PR de GitOps: a
+# variável de ambiente foi renomeada com um typo (DATABASE_URLL) em vez de
+# removida, o que é mais realista e mais difícil de notar num review rápido
+# do que simplesmente apagar a env var. Annotation de commit no
+# spec.template (ver nota em v1-ok.yaml) — é o que a correlação GitOps da
+# Fase 3 lê do ReplicaSet gerado por esta revisão.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-worker
+  namespace: demo
+  labels:
+    app: payment-worker
+    k8s-mentor.dev/scenario: deploy-recente-quebrado
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-worker
+  template:
+    metadata:
+      labels:
+        app: payment-worker
+        k8s-mentor.dev/scenario: deploy-recente-quebrado
+      annotations:
+        k8s-mentor.dev/commit: "e4f5a6b — fix: normaliza nome das env vars do payment-worker"
+    spec:
+      containers:
+        - name: payment-worker
+          image: busybox
+          command: ["sh", "-c"]
+          args:
+            - |
+              if [ -z "$DATABASE_URL" ]; then
+                echo "DATABASE_URL não definida — encerrando" >&2
+                exit 1
+              fi
+              echo "payment-worker conectado a $DATABASE_URL"
+              sleep 3600
+          env:
+            - name: DATABASE_URLL # <- typo introduzido neste "commit"
+              value: "postgres://payments-db:5432/payments"

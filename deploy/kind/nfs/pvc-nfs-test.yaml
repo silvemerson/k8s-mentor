@@ -1,0 +1,44 @@
+# Smoke test opcional pra confirmar que o storageClass "nfs-client" está
+# funcionando antes de confiar nele pro Qdrant. Não faz parte do fluxo normal
+# de setup — rode manualmente se algo parecer errado com a persistência.
+#
+#   kubectl apply -f deploy/kind/nfs/pvc-nfs-test.yaml
+#   kubectl get pvc -n test-nfs
+#   kubectl delete ns test-nfs   # limpeza
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-nfs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-test-pvc
+  namespace: test-nfs
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nfs-test-pod
+  namespace: test-nfs
+spec:
+  containers:
+    - name: writer
+      image: busybox
+      command: ["/bin/sh", "-c"]
+      args:
+        - echo "NFS funcionando em $(date)" > /mnt/nfs/teste.txt && sleep 3600
+      volumeMounts:
+        - name: nfs-volume
+          mountPath: /mnt/nfs
+  volumes:
+    - name: nfs-volume
+      persistentVolumeClaim:
+        claimName: nfs-test-pvc

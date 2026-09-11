@@ -1,0 +1,202 @@
+{{- if .Values.agent.enabled }}
+# Desabilitado por padrão (agent.enabled: false) até existir uma imagem
+# publicada — ver Roadmap no README (Fase 1). Estrutura já deixada pronta pra
+# quando cmd/k8s-mentor tiver código.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-mentor-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+{{- if .Values.agent.rbac.enabled }}
+---
+# Permissão de LEITURA (get/list, nunca write) no namespace observado.
+# Cobre o mínimo que a correlação GitOps (Fase 3) precisa pra reconstruir o
+# histórico de rollout (pods/replicasets/deployments), e — quando
+# agent.watch.enabled — o conjunto típico que o próprio k8sgpt precisa pros
+# seus analyzers embutidos (services, configmaps, PVCs, HPAs, ingresses...).
+# Reaproveitado pelo CronJob de watch.yaml, mesma ServiceAccount. Fica no
+# namespace observado (watchNamespace), não no namespace do k8s-mentor,
+# porque é lá que os workloads de verdade vivem.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k8s-mentor-agent-read
+  namespace: {{ .Values.agent.rbac.watchNamespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "configmaps", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: k8s-mentor-agent-read
+  namespace: {{ .Values.agent.rbac.watchNamespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8s-mentor-agent-read
+subjects:
+  - kind: ServiceAccount
+    name: k8s-mentor-agent
+    namespace: {{ .Values.namespace }}
+{{- if .Values.agent.rbac.allowActions }}
+---
+# ÚNICA permissão de ESCRITA do agente (Fase 5 — ação supervisionada,
+# agent/decision + internal/k8s.RollbackDeployment/RestartDeployment).
+# Deliberadamente um Role separado do de leitura, pra ficar óbvio numa
+# auditoria de RBAC onde exatamente o agente pode escrever — e continua
+# restrito a "patch" em Deployments deste namespace, nada além disso. A
+# proteção de verdade não é RBAC, é o fluxo: só o subcomando `apply-action`
+# chama essas funções, e só com `--yes` explícito (ver cmd/k8s-mentor).
+# Desative com agent.rbac.allowActions: false se quiser o agente 100%
+# somente-leitura.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k8s-mentor-agent-actions
+  namespace: {{ .Values.agent.rbac.watchNamespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: k8s-mentor-agent-actions
+  namespace: {{ .Values.agent.rbac.watchNamespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8s-mentor-agent-actions
+subjects:
+  - kind: ServiceAccount
+    name: k8s-mentor-agent
+    namespace: {{ .Values.namespace }}
+{{- end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-mentor-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: k8s-mentor-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: k8s-mentor-agent
+        app.kubernetes.io/part-of: k8s-mentor
+    spec:
+      serviceAccountName: k8s-mentor-agent
+      containers:
+        - name: agent
+          image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
+          imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            {{- range $key, $value := .Values.agent.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          # O processo principal expõe /healthz mesmo antes de receber uma
+          # análise; assim o Kubernetes só anuncia o Service quando o agente
+          # está pronto para receber a próxima fase da API HTTP.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-mentor-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: k8s-mentor-agent
+  ports:
+    - name: http
+      port: {{ .Values.agent.service.port }}
+      targetPort: http
+{{- if .Values.agent.exposeViaGateway }}
+---
+# Expõe o agente através do Gateway do k8s-mentor (deploy/kind/gateway-api/gateway.yaml),
+# que por sua vez recebe IP de LoadBalancer do MetalLB. Alternativa ao
+# port-forward manual — útil pra demonstrar uma chamada HTTP ao vivo.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: k8s-mentor-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-agent
+    app.kubernetes.io/part-of: k8s-mentor
+spec:
+  parentRefs:
+    - name: k8s-mentor-gateway
+      namespace: default
+      sectionName: http
+  hostnames:
+    - {{ .Values.agent.gatewayHostname | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: k8s-mentor-agent
+          port: {{ .Values.agent.service.port }}
+{{- end }}
+{{- end }}

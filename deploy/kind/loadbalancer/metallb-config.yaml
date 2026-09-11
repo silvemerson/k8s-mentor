@@ -1,0 +1,21 @@
+# Pool de IPs pro MetalLB dar LoadBalancer real ao cluster Kind (que não tem
+# isso nativamente). Faixa deliberadamente DIFERENTE da usada por outros
+# clusters Kind na mesma rede Docker fixa "kind" (ex: o pool
+# 172.20.0.240-172.20.0.250 usado pelo kind-infra-lab/sparta) — dois MetalLB
+# de clusters distintos anunciando (ARP) o mesmo IP na mesma rede L2 é conflito
+# garantido. Se você já usa outra faixa nesse range em outro cluster seu,
+# ajuste os endereços abaixo antes de aplicar.
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: k8s-mentor-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 172.20.0.220-172.20.0.229
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2
+  namespace: metallb-system

@@ -1,0 +1,29 @@
+k8s-mentor instalado no namespace "{{ .Values.namespace }}". 🎉
+
+Componentes ativos:
+{{- if .Values.qdrant.enabled }}
+  ✅ Qdrant (vector DB / memória de incidentes) — dentro do cluster
+     {{- if .Values.qdrant.persistence.enabled }}, persistido via storageClass "{{ .Values.qdrant.persistence.storageClassName }}" (NFS){{ end }}
+{{- end }}
+{{- if .Values.ollama.enabled }}
+  ✅ Ollama — referenciado via Service interno, rodando de verdade no host
+     (docker-compose). Confirme que está no ar: curl http://localhost:11434
+{{- end }}
+{{- if .Values.agent.enabled }}
+  ✅ Agente k8s-mentor — dentro do cluster
+  {{- if .Values.agent.exposeViaGateway }}, exposto via Gateway API em http://{{ .Values.agent.gatewayHostname }}{{ end }}
+{{- else }}
+  ⏸️  Agente k8s-mentor — DESABILITADO (agent.enabled=false). Normal até a
+     Fase 1 do roadmap ter uma imagem publicada. Ver README > Roadmap.
+{{- end }}
+
+Verificar os pods:
+  kubectl -n {{ .Values.namespace }} get pods
+
+Testar o Qdrant de dentro do cluster:
+  kubectl -n {{ .Values.namespace }} run tmp-curl --rm -it --image=curlimages/curl -- \
+    curl http://qdrant:6333/collections
+
+Testar se o Ollama (externo) está acessível de dentro do cluster:
+  kubectl -n {{ .Values.namespace }} run tmp-curl --rm -it --image=curlimages/curl -- \
+    curl http://ollama:11434

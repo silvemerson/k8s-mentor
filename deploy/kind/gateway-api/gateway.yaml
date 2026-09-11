@@ -1,0 +1,21 @@
+# Gateway HTTP do k8s-mentor. Instalado depois do NGINX Gateway Fabric (que
+# cria a GatewayClass "nginx" automaticamente via Helm — não reaplique um
+# GatewayClass manual, ver nota em kind-infra-lab).
+#
+# O Service criado por trás deste Gateway nasce como LoadBalancer e recebe IP
+# do pool configurado em deploy/kind/loadbalancer/metallb-config.yaml
+# (k8s-mentor-pool, 172.20.0.220-172.20.0.229).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: k8s-mentor-gateway
+  namespace: default
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All

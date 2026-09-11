@@ -1,0 +1,19 @@
+# Persistência local do NFS server (docker-compose) — dado de demo/dev, não versionado
+deploy/docker-compose/nfs-data/
+
+# Build artifacts Go (quando o código existir — Fase 1 do roadmap)
+/bin/
+*.exe
+
+# Logs e temporários
+*.log
+*.tmp
+
+# IDEs e SO
+.vscode/
+.idea/
+.DS_Store
+
+# Segredos locais (kubeconfig alternativo, .env, etc.)
+.env
+*.local.yaml

@@ -1,0 +1,39 @@
+{{- if .Values.ollama.enabled }}
+# Ollama roda FORA do cluster (docker-compose no host — ver deploy/docker-compose/),
+# anexado à mesma rede Docker fixa "kind" que o cluster usa. Este Service não
+# tem selector: é só um apontamento estável, dentro do cluster, pro IP do
+# container k8s-mentor-ollama nessa rede (ver scripts/setup-cluster.sh). Os
+# pods do Qdrant/agente chamam "http://ollama.{{ .Values.namespace }}.svc.cluster.local:11434"
+# normalmente, sem saber que a implementação está fora do Kind.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: k8s-mentor
+spec:
+  ports:
+    - name: http
+      port: {{ .Values.ollama.external.port }}
+      targetPort: {{ .Values.ollama.external.port }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: ollama
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: k8s-mentor
+    kubernetes.io/service-name: ollama
+addressType: IPv4
+ports:
+  - name: http
+    port: {{ .Values.ollama.external.port }}
+    protocol: TCP
+endpoints:
+  - addresses:
+      - {{ required "ollama.external.host é obrigatório — veja scripts/get-docker-gateway.sh" .Values.ollama.external.host }}
+{{- end }}

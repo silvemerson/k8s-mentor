@@ -1,0 +1,98 @@
+{{- if and .Values.agent.enabled .Values.agent.watch.enabled }}
+# Fase 6 — execução periódica dentro do cluster (docs/DEMO.md tem o racional
+# completo). O k8sgpt vem empacotado na própria imagem do agente (ver
+# Dockerfile) — este ConfigMap é a única config que ele precisa pra usar o
+# Ollama in-cluster como backend, equivalente ao `k8sgpt auth add --backend
+# ollama` que rodamos manualmente no host durante a validação desta fase.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-mentor-watch-k8sgpt-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-watch
+    app.kubernetes.io/part-of: k8s-mentor
+data:
+  k8sgpt.yaml: |
+    ai:
+        providers:
+            - name: ollama
+              model: {{ .Values.agent.watch.k8sgptModel | quote }}
+              baseurl: http://ollama:{{ .Values.ollama.external.port }}
+              temperature: 0.7
+              topp: 0.5
+              topk: 50
+              maxtokens: 2048
+              customheaders: []
+        defaultprovider: ollama
+    kubeconfig: ""
+    kubecontext: ""
+    verbose: false
+---
+# Roda `k8s-mentor watch` a cada agent.watch.schedule — chama o k8sgpt sozinho
+# (in-cluster, sem precisar de kubecontext: mesma ServiceAccount do agente,
+# RBAC só de LEITURA) e passa o resultado pelos pilares habilitados. Uma ação
+# sugerida fica só no log deste Job (`kubectl logs job/...`), esperando
+# aprovação manual via `apply-action --yes` — o CronJob NUNCA chama
+# apply-action sozinho. concurrencyPolicy: Forbid evita duas execuções
+# sobrepostas se uma demorar mais que o intervalo.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8s-mentor-watch
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: k8s-mentor-watch
+    app.kubernetes.io/part-of: k8s-mentor
+spec:
+  schedule: {{ .Values.agent.watch.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 180
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: k8s-mentor-watch
+            app.kubernetes.io/part-of: k8s-mentor
+        spec:
+          serviceAccountName: k8s-mentor-agent
+          restartPolicy: Never
+          containers:
+            - name: watch
+              image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
+              imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
+              command:
+                - /k8s-mentor
+                - watch
+                - --namespace={{ .Values.agent.rbac.watchNamespace }}
+                - --k8sgpt-config=/etc/k8sgpt/k8sgpt.yaml
+                {{- if .Values.agent.watch.slack.enabled }}
+                - --slack-min-recurrence={{ .Values.agent.watch.slack.minRecurrence }}
+                {{- end }}
+              env:
+                {{- range $key, $value := .Values.agent.env }}
+                - name: {{ $key }}
+                  value: {{ $value | quote }}
+                {{- end }}
+                {{- if .Values.agent.watch.slack.enabled }}
+                - name: SLACK_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.agent.watch.slack.secretName }}
+                      key: {{ .Values.agent.watch.slack.secretKey }}
+                {{- end }}
+              volumeMounts:
+                - name: k8sgpt-config
+                  mountPath: /etc/k8sgpt
+                  readOnly: true
+              resources:
+                {{- toYaml .Values.agent.resources | nindent 16 }}
+          volumes:
+            - name: k8sgpt-config
+              configMap:
+                name: k8s-mentor-watch-k8sgpt-config
+{{- end }}

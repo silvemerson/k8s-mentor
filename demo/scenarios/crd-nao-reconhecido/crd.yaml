@@ -1,0 +1,52 @@
+# Cenário 3 — CRD customizado que o K8sGPT não reconhece.
+#
+# K8sGPT tem analyzers pra tipos conhecidos (Pod, Service, PVC, HPA,
+# Ingress...) mas não tem noção nenhuma do que "DemoWorkload" significa nem
+# do que status.phase: Failed representa nesse CRD fictício — ele
+# simplesmente não vai reportar nada sobre esse recurso (ou, na melhor das
+# hipóteses, um diagnóstico genérico e raso). Não precisa de um controller de
+# verdade: a instância (instance.yaml) já nasce no estado de erro, sem
+# subresource de status, então dá pra setar status.phase direto via `kubectl
+# apply` — ver apply.sh, que espera a CRD ficar Established antes de aplicar
+# a instância.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: demoworkloads.k8smentor.dev
+spec:
+  group: k8smentor.dev
+  scope: Namespaced
+  names:
+    plural: demoworkloads
+    singular: demoworkload
+    kind: DemoWorkload
+    shortNames: ["dwl"]
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                image:
+                  type: string
+                replicas:
+                  type: integer
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                reason:
+                  type: string
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Reason
+          type: string
+          jsonPath: .status.reason

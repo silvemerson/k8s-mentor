@@ -1,0 +1,43 @@
+# Versão "boa" do payment-worker — aplicada primeiro por apply.sh, fica
+# rodando um tempo antes da v2 (quebrada) entrar, pra existir um intervalo de
+# tempo real entre os dois estados. A correlação GitOps da Fase 3 lê o
+# histórico de ReplicaSets do Deployment, e cada ReplicaSet só "congela" o
+# que está em spec.template — por isso o annotation de commit vai lá, e não
+# solto em metadata.annotations do Deployment (que não é versionado por
+# revisão).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-worker
+  namespace: demo
+  labels:
+    app: payment-worker
+    k8s-mentor.dev/scenario: deploy-recente-quebrado
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-worker
+  template:
+    metadata:
+      labels:
+        app: payment-worker
+        k8s-mentor.dev/scenario: deploy-recente-quebrado
+      annotations:
+        k8s-mentor.dev/commit: "a1b2c3d — chore: bump payment-worker to v1.4.0"
+    spec:
+      containers:
+        - name: payment-worker
+          image: busybox
+          command: ["sh", "-c"]
+          args:
+            - |
+              if [ -z "$DATABASE_URL" ]; then
+                echo "DATABASE_URL não definida — encerrando" >&2
+                exit 1
+              fi
+              echo "payment-worker conectado a $DATABASE_URL"
+              sleep 3600
+          env:
+            - name: DATABASE_URL
+              value: "postgres://payments-db:5432/payments"

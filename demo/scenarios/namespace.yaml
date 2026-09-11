@@ -1,0 +1,7 @@
+# Namespace onde todos os cenários de falha da demo são injetados.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/part-of: k8s-mentor-demo

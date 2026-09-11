@@ -1,0 +1,62 @@
+[
+  {
+    "timestamp": "2026-08-01T09:14:00Z",
+    "k8sgpt": {
+      "kind": "Pod",
+      "name": "checkout-service-6d9f8b7c5-h2k9p",
+      "namespace": "demo",
+      "error": [
+        { "Text": "back-off 40s restarting failed container=checkout-service pod=checkout-service-6d9f8b7c5-h2k9p_demo(...)" }
+      ],
+      "details": "O container foi finalizado com código 137 (OOMKilled). Ação aplicada pelo plantonista: aumentado limits.memory de 64Mi para 96Mi."
+    }
+  },
+  {
+    "timestamp": "2026-08-05T22:47:00Z",
+    "k8sgpt": {
+      "kind": "Pod",
+      "name": "checkout-service-6d9f8b7c5-x91qz",
+      "namespace": "demo",
+      "error": [
+        { "Text": "back-off 80s restarting failed container=checkout-service pod=checkout-service-6d9f8b7c5-x91qz_demo(...)" }
+      ],
+      "details": "OOMKilled de novo, poucos dias depois do último ajuste. Ação aplicada: aumentado limits.memory de 96Mi para 128Mi. SRE anotou: \"será que é vazamento?\""
+    }
+  },
+  {
+    "timestamp": "2026-08-09T03:52:00Z",
+    "k8sgpt": {
+      "kind": "Pod",
+      "name": "checkout-service-7a1c4e2f8-m3d7k",
+      "namespace": "demo",
+      "error": [
+        { "Text": "back-off 120s restarting failed container=checkout-service pod=checkout-service-7a1c4e2f8-m3d7k_demo(...)" }
+      ],
+      "details": "Terceira ocorrência de OOMKilled no mês. Limite aumentado de 128Mi para 192Mi como paliativo — sem investigação de causa raiz ainda."
+    }
+  },
+  {
+    "timestamp": "2026-08-13T18:05:00Z",
+    "k8sgpt": {
+      "kind": "Pod",
+      "name": "checkout-service-7a1c4e2f8-q6w2t",
+      "namespace": "demo",
+      "error": [
+        { "Text": "back-off 40s restarting failed container=checkout-service pod=checkout-service-7a1c4e2f8-q6w2t_demo(...)" }
+      ],
+      "details": "Quarta ocorrência. Limite aumentado de 192Mi para 256Mi. Aberto card de tech debt para investigar suspeita de memory leak no checkout-service, ainda sem dono."
+    }
+  },
+  {
+    "timestamp": "2026-08-16T05:31:00Z",
+    "k8sgpt": {
+      "kind": "Pod",
+      "name": "checkout-service-9c2b5f1a3-t8n4v",
+      "namespace": "demo",
+      "error": [
+        { "Text": "back-off 40s restarting failed container=checkout-service pod=checkout-service-9c2b5f1a3-t8n4v_demo(...)" }
+      ],
+      "details": "Quinta ocorrência em pouco mais de duas semanas, mesmo após o limite ter sido aumentado quatro vezes seguidas. Nenhuma correção de causa raiz aplicada até agora."
+    }
+  }
+]

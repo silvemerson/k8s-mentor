@@ -1,0 +1,19 @@
+apiVersion: v2
+name: k8s-mentor
+description: >
+  k8s-mentor — camada local de memória, RAG e correlação que enriquece ferramentas
+  de diagnóstico do Kubernetes (K8sGPT hoje) com contexto histórico, runbooks,
+  GitOps e métricas. Todos os componentes rodam como microserviços dentro do
+  próprio cluster.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - k8sgpt
+  - ollama
+  - sre
+  - observability
+home: https://github.com/SEU_USUARIO/k8s-mentor # TODO: ajustar quando o repo for publicado
+sources:
+  - https://github.com/SEU_USUARIO/k8s-mentor # TODO: ajustar quando o repo for publicado

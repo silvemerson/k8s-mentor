@@ -1,0 +1,67 @@
+# Serviços que rodam FORA do cluster Kind, mas na mesma rede Docker fixa
+# "kind" (criada por scripts/setup-cluster.sh, subnet 172.20.0.0/16) — por
+# isso ambos ficam alcançáveis por IP direto de dentro do cluster, sem
+# depender do gateway do host. É o mesmo padrão usado pelo NFS server em
+# https://github.com/silvemerson/kind-infra-lab.
+#
+# Ollama: fora do cluster de propósito — mais simples lidar com RAM/GPU do
+# modelo fora de um node que já é Docker-em-Docker.
+#
+# NFS server: fornece o storageClass "nfs-client" usado pela persistência do
+# Qdrant (via nfs-subdir-external-provisioner, instalado dentro do cluster).
+#
+# Uso:
+#   ollama pull llama3.1:8b   # ANTES de subir, ver docs/DEMO.md
+#   docker compose -f deploy/docker-compose/docker-compose.yaml up -d
+#
+# (normalmente você não roda isso direto — scripts/setup-cluster.sh já inclui
+# este passo na ordem certa, junto com a criação da rede "kind".)
+#
+# Já roda outro Ollama na máquina (porta 11434 ocupada)? Não precisa deste
+# serviço "ollama" — exporte OLLAMA_CONTAINER=<nome-do-container-existente>
+# antes de rodar scripts/setup-cluster.sh, que ele reaproveita esse container
+# (conecta na rede "kind" e usa o IP dele) em vez de subir um novo.
+version: "3.9"
+
+networks:
+  kind:
+    external: true # criada por scripts/setup-cluster.sh antes deste compose
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: k8s-mentor-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434" # acesso direto do host, útil pra testar com `ollama` local
+    volumes:
+      # Reaproveita o cache de modelos já baixados no host — se você já rodou
+      # `ollama pull` fora do Docker, esse volume só precisa apontar pro mesmo
+      # diretório. Ajuste se seu $HOME/.ollama não for o padrão do seu SO.
+      - ${OLLAMA_HOST_DIR:-~/.ollama}:/root/.ollama
+    networks:
+      - kind
+    # Descomente para usar GPU NVIDIA local (requer nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nfs-server:
+    image: itsthenetwork/nfs-server-alpine
+    container_name: k8s-mentor-nfs-server
+    privileged: true
+    environment:
+      - SHARED_DIRECTORY=/nfs-data
+    volumes:
+      - ./nfs-data:/nfs-data
+    networks:
+      - kind
